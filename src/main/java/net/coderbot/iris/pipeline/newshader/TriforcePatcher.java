@@ -369,6 +369,7 @@ public class TriforcePatcher {
 			transformations.injectLine(Transformations.InjectionPoint.DEFINES, "#define VERT_SCALE " + vertexRange);
 
 			transformations.injectLine(Transformations.InjectionPoint.EXTENSIONS, "#extension GL_ARB_shader_draw_parameters : enable");
+			transformations.injectLine(Transformations.InjectionPoint.EXTENSIONS, "#extension GL_ARB_shader_storage_buffer_object : enable");
 
 			transformations.injectLine(Transformations.InjectionPoint.DEFINES, SodiumTerrainPipeline.parseSodiumImport("#import <sodium:include/terrain_format.vert>"));
 			transformations.injectLine(Transformations.InjectionPoint.BEFORE_CODE, """
@@ -379,8 +380,8 @@ public class TriforcePatcher {
 			    vec3 translation;
 			};
 
-			layout(std140, binding = 1) uniform ModelTransforms {
-			    ModelTransform transforms[MAX_BATCH_SIZE];
+			layout(std140, binding = 1) restrict readonly buffer ModelTransforms {
+			    ModelTransform[] transforms;
 			};
 
 			vec3 _apply_view_transform(vec3 position) {

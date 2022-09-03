@@ -51,7 +51,7 @@ import org.joml.Matrix4f;
 import org.lwjgl.system.MemoryUtil;
 
 // TODO: abstract buffer targets, abstract VAO creation, supply shader identifiers
-public abstract class AbstractIrisMdChunkRenderer<B extends AbstractIrisMdChunkRenderer.MdChunkRenderBatch> extends AbstractChunkRenderer implements IrisChunkRenderer {
+public abstract class AbstractIrisMdChunkRenderer extends AbstractChunkRenderer implements IrisChunkRenderer {
     public static final int TRANSFORM_STRUCT_STRIDE = 4 * Float.BYTES;
     public static final int CAMERA_MATRICES_SIZE = 192;
     public static final int FOG_PARAMETERS_SIZE = 32;
@@ -66,7 +66,6 @@ public abstract class AbstractIrisMdChunkRenderer<B extends AbstractIrisMdChunkR
     protected final SequenceIndexBuffer indexBuffer;
 	private final VertexArrayDescription<BufferTarget> vertexArray;
 
-	protected Collection<B>[] renderLists;
 	protected IrisChunkProgramOverrides overrides;
 	private TerrainVertexType vertexType;
 
@@ -118,7 +117,8 @@ public abstract class AbstractIrisMdChunkRenderer<B extends AbstractIrisMdChunkR
 		RenderPipelineDescription translucentDescription = RenderPipelineDescription.builder().setCullingMode(CullMode.DISABLE).setBlendFunction(BlendFunc.separate(BlendFunc.SrcFactor.SRC_ALPHA, BlendFunc.DstFactor.ONE_MINUS_SRC_ALPHA, BlendFunc.SrcFactor.ONE, BlendFunc.DstFactor.ONE_MINUS_SRC_ALPHA)).build();
 
 		for (ChunkRenderPass pass : renderPassManager.getAllRenderPasses()) {
-			Program<IrisChunkShaderInterface> program = overrides.getProgramOverride(this instanceof MdiChunkRendererIris, getMaxBatchSize(), false, device, pass, vertexType);
+			Program<IrisChunkShaderInterface> program = overrides.getProgramOverride(this instanceof MdiChunkRendererIris || this instanceof GPUMdicChunkRendererIris,
+                    getMaxBatchSize(), false, device, pass, vertexType);
 			if (program == null) {
 				throw new RuntimeException("failure");
 			}
@@ -131,7 +131,7 @@ public abstract class AbstractIrisMdChunkRenderer<B extends AbstractIrisMdChunkR
 			this.pipelines[pass.getId()] = pipeline;
 
 			if (hasShadowPass) {
-				Program<IrisChunkShaderInterface> shadowProgram = overrides.getProgramOverride(this instanceof MdiChunkRendererIris, getMaxBatchSize(), true, device, pass, vertexType);
+				Program<IrisChunkShaderInterface> shadowProgram = overrides.getProgramOverride(this instanceof MdiChunkRendererIris || this instanceof GPUMdicChunkRendererIris, getMaxBatchSize(), true, device, pass, vertexType);
 				if (shadowProgram == null) {
 					throw new RuntimeException("failure");
 				}
@@ -206,7 +206,7 @@ public abstract class AbstractIrisMdChunkRenderer<B extends AbstractIrisMdChunkR
 		for (ChunkRenderPass pass : renderPassManager.getAllRenderPasses()) {
 			RenderPipeline<IrisChunkShaderInterface, BufferTarget> pipeline = this.device.createRenderPipeline(
 				pass.getPipelineDescription(),
-				overrides.getProgramOverride(this instanceof MdiChunkRendererIris, getMaxBatchSize(), false, device, pass, vertexType),
+				overrides.getProgramOverride(this instanceof MdiChunkRendererIris || this instanceof GPUMdicChunkRendererIris, getMaxBatchSize(), false, device, pass, vertexType),
 				vertexArray
 			);
 
@@ -215,7 +215,7 @@ public abstract class AbstractIrisMdChunkRenderer<B extends AbstractIrisMdChunkR
 			if (hasShadowPass) {
 				RenderPipeline<IrisChunkShaderInterface, BufferTarget> shadowPipeline = this.device.createRenderPipeline(
 					pass.isTranslucent() ? translucentDescription : terrainDescription,
-					overrides.getProgramOverride(this instanceof MdiChunkRendererIris, getMaxBatchSize(), true, device, pass, vertexType),
+					overrides.getProgramOverride(this instanceof MdiChunkRendererIris || this instanceof GPUMdicChunkRendererIris, getMaxBatchSize(), true, device, pass, vertexType),
 					vertexArray
 				);
 
@@ -224,92 +224,6 @@ public abstract class AbstractIrisMdChunkRenderer<B extends AbstractIrisMdChunkR
 		}
 	}
 
-	//// RENDER METHODS
-
-    @Override
-    public void render(ChunkRenderPass renderPass, ChunkRenderMatrices matrices, int frameIndex) {
-        // make sure a render list was created for this pass, if any
-        if (this.renderLists == null) {
-            return;
-        }
-
-        int passId = renderPass.getId();
-        if (passId < 0 || this.renderLists.length < passId) {
-            return;
-        }
-
-        var renderList = this.renderLists[passId];
-        if (renderList == null) {
-            return;
-        }
-
-        // if the render list exists, the pipeline probably exists (unless a new render pass was added without a reload)
-		RenderPipeline<IrisChunkShaderInterface, BufferTarget> pipeline;
-		if(ShadowRenderingState.areShadowsCurrentlyBeingRendered()) {
-			pipeline = this.shadowPipelines[passId];
-		} else {
-			pipeline = this.pipelines[passId];
-		}
-
-		RenderSystem.setShaderTexture(0, GlTexture.getHandle(TextureUtil.getBlockAtlasTexture()));
-		pipeline.getProgram().getInterface().setup();
-        this.device.useRenderPipeline(pipeline, (commandList, programInterface, pipelineState) -> {
-            this.setupPerRenderList(renderPass, matrices, frameIndex, pipeline, commandList, programInterface, pipelineState);
-
-            for (B batch : renderList) {
-                this.setupPerBatch(renderPass, matrices, frameIndex, pipeline, commandList, programInterface, pipelineState, batch);
-
-                this.issueDraw(renderPass, matrices, frameIndex, pipeline, commandList, programInterface, pipelineState, batch);
-            }
-        });
-		pipeline.getProgram().getInterface().restore();
-	}
-
-    //// OVERRIDABLE RENDERING METHODS
-
-    protected void setupPerRenderList(
-            ChunkRenderPass renderPass,
-            ChunkRenderMatrices matrices,
-            int frameIndex,
-            RenderPipeline<IrisChunkShaderInterface, BufferTarget> pipeline,
-            RenderCommandList<BufferTarget> commandList,
-			IrisChunkShaderInterface programInterface,
-            PipelineState pipelineState
-    ) {
-        this.setupTextures(renderPass, pipelineState);
-        this.setupUniforms(matrices, programInterface, pipelineState, frameIndex);
-
-        commandList.bindElementBuffer(this.indexBuffer.getBuffer());
-    }
-
-    protected void setupPerBatch(
-            ChunkRenderPass renderPass,
-            ChunkRenderMatrices matrices,
-            int frameIndex,
-			RenderPipeline<IrisChunkShaderInterface, BufferTarget> pipeline,
-            RenderCommandList<BufferTarget> commandList,
-			IrisChunkShaderInterface programInterface,
-            PipelineState pipelineState,
-            B batch
-    ) {
-        commandList.bindVertexBuffer(
-                BufferTarget.VERTICES,
-                batch.getVertexBuffer(),
-                0,
-                batch.getVertexStride()
-        );
-    }
-
-    protected abstract void issueDraw(
-            ChunkRenderPass renderPass,
-            ChunkRenderMatrices matrices,
-            int frameIndex,
-			RenderPipeline<IrisChunkShaderInterface, BufferTarget> pipeline,
-            RenderCommandList<BufferTarget> commandList,
-			IrisChunkShaderInterface programInterface,
-            PipelineState pipelineState,
-            B batch
-    );
 
     protected void setupTextures(ChunkRenderPass pass, PipelineState pipelineState) {
         pipelineState.bindTexture(
@@ -388,43 +302,6 @@ public abstract class AbstractIrisMdChunkRenderer<B extends AbstractIrisMdChunkR
 
     protected static float getCameraTranslation(int chunkBlockPos, int cameraBlockPos, float cameraPos) {
         return (chunkBlockPos - cameraBlockPos) - cameraPos;
-    }
-
-    //// OVERRIDABLE BATCH
-
-    protected static class MdChunkRenderBatch {
-        protected final Buffer vertexBuffer;
-        protected final int vertexStride;
-        protected final int commandCount;
-        protected final long transformBufferOffset;
-
-        public MdChunkRenderBatch(
-                Buffer vertexBuffer,
-                int vertexStride,
-                int commandCount,
-                long transformBufferOffset
-        ) {
-            this.vertexBuffer = vertexBuffer;
-            this.vertexStride = vertexStride;
-            this.commandCount = commandCount;
-            this.transformBufferOffset = transformBufferOffset;
-        }
-
-        public Buffer getVertexBuffer() {
-            return this.vertexBuffer;
-        }
-
-        public int getVertexStride() {
-            return this.vertexStride;
-        }
-
-        public int getCommandCount() {
-            return this.commandCount;
-        }
-
-        public long getTransformsBufferOffset() {
-            return this.transformBufferOffset;
-        }
     }
 
     //// OVERRIDABLE BUFFER INFO

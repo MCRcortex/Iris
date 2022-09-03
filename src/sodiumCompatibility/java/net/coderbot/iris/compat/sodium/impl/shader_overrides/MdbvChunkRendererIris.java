@@ -31,7 +31,7 @@ import net.minecraft.core.SectionPos;
 import org.lwjgl.system.MemoryUtil;
 import org.lwjgl.system.Pointer;
 
-public class MdbvChunkRendererIris extends AbstractIrisMdChunkRenderer<MdbvChunkRendererIris.MdbvChunkRenderBatch> {
+public class MdbvChunkRendererIris extends AbstractIrisBatchedMdChunkRenderer<MdbvChunkRendererIris.MdbvChunkRenderBatch> {
 
 	protected long indexCountsBufferPtr;
 	protected long baseVerticesBufferPtr;

@@ -11,12 +11,13 @@ public abstract class MixinAdvancedShadowCullingFrustum implements Frustum, Frus
 	@Shadow(remap = false)
 	public abstract int fastAabbTest(float minX, float minY, float minZ, float maxX, float maxY, float maxZ);
 
+
 	@Override
-	public int testBox(float minX, float minY, float minZ, float maxX, float maxY, float maxZ) {
+	public int intersectBox(float minX, float minY, float minZ, float maxX, float maxY, float maxZ, int msk) {
 		return switch(fastAabbTest(minX, minY, minZ, maxX, maxY, maxZ)) {
 			case 0 -> Frustum.OUTSIDE;
 			case 1 -> Frustum.INSIDE;
-			case 2 -> Frustum.INTERSECT;
+			case 2 -> 0;
 			default ->
 				throw new IllegalStateException("Unexpected value: " + fastAabbTest(minX, minY, minZ, maxX, maxY, maxZ));
 		};

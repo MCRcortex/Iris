@@ -1,10 +1,15 @@
 package net.coderbot.iris.pipeline;
 
 import com.google.common.collect.ImmutableList;
+import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Matrix4f;
 import com.mojang.math.Vector3f;
+import net.caffeinemc.sodium.render.SodiumWorldRenderer;
+import net.caffeinemc.sodium.render.ViewportInterface;
+import net.caffeinemc.sodium.render.chunk.occlusion.gpu.OcclusionEngine;
+import net.caffeinemc.sodium.render.chunk.occlusion.gpu.ViewportedData;
 import net.coderbot.batchedentityrendering.impl.BatchingDebugMessageHelper;
 import net.coderbot.batchedentityrendering.impl.DrawCallTrackingRenderBuffers;
 import net.coderbot.batchedentityrendering.impl.MemoryTrackingRenderBuffers;
@@ -249,6 +254,8 @@ public class ShadowRenderer {
 	}
 
 	private FrustumHolder createShadowFrustum(float renderMultiplier, FrustumHolder holder) {
+		if (false)
+			return holder.setInfo(new NonCullingFrustum(), "yes", "yes");
 		// TODO: Cull entities / block entities with Advanced Frustum Culling even if voxelization is detected.
 		String distanceInfo;
 		String cullingInfo;
@@ -325,6 +332,7 @@ public class ShadowRenderer {
 	}
 
 	public void renderShadows(LevelRendererAccessor levelRenderer, Camera playerCamera) {
+		ViewportInterface.setViewportIndex(1);
 		Minecraft client = Minecraft.getInstance();
 
 		levelRenderer.getLevel().getProfiler().popPush("shadows");
@@ -415,11 +423,16 @@ public class ShadowRenderer {
 		// TODO: Better way of preventing light from leaking into places where it shouldn't
 		RenderSystem.disableCull();
 
+		//RenderSystem.viewport(0, 0, 2048*2, 2048*2);
 		// Render all opaque terrain unless pack requests not to
 		if (shouldRenderTerrain) {
 			levelRenderer.invokeRenderChunkLayer(RenderType.solid(), modelView, cameraX, cameraY, cameraZ, shadowProjection);
 			levelRenderer.invokeRenderChunkLayer(RenderType.cutout(), modelView, cameraX, cameraY, cameraZ, shadowProjection);
 			levelRenderer.invokeRenderChunkLayer(RenderType.cutoutMipped(), modelView, cameraX, cameraY, cameraZ, shadowProjection);
+
+			RenderTarget main = Minecraft.getInstance().getMainRenderTarget();
+			RenderSystem.viewport(0, 0, main.width, main.height);
+			SodiumWorldRenderer.instance().getOcclusionEngine().doOcclusion();
 		}
 
 		// Reset our viewport in case Sodium overrode it
@@ -457,6 +470,7 @@ public class ShadowRenderer {
 			((DrawCallTrackingRenderBuffers) buffers).resetDrawCounts();
 		}
 
+		/*
 		MultiBufferSource.BufferSource bufferSource = buffers.bufferSource();
 		EntityRenderDispatcher dispatcher = levelRenderer.getEntityRenderDispatcher();
 
@@ -478,6 +492,8 @@ public class ShadowRenderer {
 		// shader packs assume that everything drawn afterwards is actually translucent and should cast a colored
 		// shadow...
 		bufferSource.endBatch();
+
+		 */
 
 		copyPreTranslucentDepth(levelRenderer);
 
@@ -526,6 +542,7 @@ public class ShadowRenderer {
 
 		levelRenderer.getLevel().getProfiler().pop();
 		levelRenderer.getLevel().getProfiler().popPush("updatechunks");
+		ViewportInterface.setViewportIndex(0);
 	}
 
 	private int renderBlockEntities(MultiBufferSource.BufferSource bufferSource, PoseStack modelView, double cameraX, double cameraY, double cameraZ, float tickDelta, boolean hasEntityFrustum) {

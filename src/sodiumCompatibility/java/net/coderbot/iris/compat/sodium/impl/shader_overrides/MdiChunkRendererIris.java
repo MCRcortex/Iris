@@ -34,7 +34,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.core.SectionPos;
 import org.lwjgl.system.MemoryUtil;
 
-public class MdiChunkRendererIris extends AbstractIrisMdChunkRenderer<MdiChunkRendererIris.MdiChunkRenderBatch> {
+public class MdiChunkRendererIris extends AbstractIrisBatchedMdChunkRenderer<MdiChunkRendererIris.MdiChunkRenderBatch> {
 	public static final int COMMAND_STRUCT_STRIDE = 5 * Integer.BYTES;
 
 	protected final StreamingBuffer commandBuffer;
